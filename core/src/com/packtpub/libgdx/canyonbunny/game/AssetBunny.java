@@ -7,6 +7,7 @@ public class AssetBunny {
 	public final AtlasRegion head;
 
 	public AssetBunny(TextureAtlas atlas) {
+		//set up the region with bunny-head picture
 		head = atlas.findRegion("bunny_head");
 	}
 }
