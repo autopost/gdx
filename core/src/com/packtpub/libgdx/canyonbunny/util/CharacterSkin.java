@@ -14,38 +14,33 @@
  * limitations under the License.
  ******************************************************************************/
 
+package com.packtpub.libgdx.canyonbunny.util;
 
-package com.packtpub.libgdx.canyonbunny.screens;
+import com.badlogic.gdx.graphics.Color;
 
-import com.badlogic.gdx.Game;
-import com.badlogic.gdx.Screen;
-import com.badlogic.gdx.assets.AssetManager;
-import com.packtpub.libgdx.canyonbunny.game.Assets;
+public enum CharacterSkin {
 
-public abstract class AbstractGameScreen implements Screen {
+	WHITE("White", 1.0f, 1.0f, 1.0f),
 
-	protected Game game;
+	GRAY("Gray", 0.7f, 0.7f, 0.7f),
 
-	public AbstractGameScreen (Game game) {
-		this.game = game;
+	BROWN("Brown", 0.7f, 0.5f, 0.3f);
+
+	private String name;
+	private Color color = new Color();
+
+	private CharacterSkin(String name, float r, float g, float b) {
+		this.name = name;
+		color.set(r, g, b, 1.0f);
 	}
 
-	public abstract void render (float deltaTime);
-
-	public abstract void resize (int width, int height);
-
-	public abstract void show ();
-
-	public abstract void hide ();
-
-	public abstract void pause ();
-
-	public void resume () {
-		Assets.instance.init(new AssetManager());
+	@Override
+	public String toString() {
+		return name;
 	}
 
-	public void dispose () {
-		Assets.instance.dispose();
+	public Color getColor() {
+		return color;
 	}
 
 }

@@ -1,36 +1,48 @@
+/*******************************************************************************
+ * Copyright 2013 Andreas Oehlke
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ ******************************************************************************/
+
 package com.packtpub.libgdx.canyonbunny.game;
 
 import com.badlogic.gdx.Application.ApplicationType;
-import com.packtpub.libgdx.canyonbunny.game.objects.Rock;
-import com.packtpub.libgdx.canyonbunny.util.Constants;
+import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.InputAdapter;
-import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.graphics.Pixmap.Format;
-import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.g2d.Sprite;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.math.MathUtils;
-import com.badlogic.gdx.utils.Array;
-import com.packtpub.libgdx.canyonbunny.CanyonBunnyMain;
-import com.packtpub.libgdx.canyonbunny.util.CameraHelper;
 import com.badlogic.gdx.math.Rectangle;
 import com.packtpub.libgdx.canyonbunny.game.objects.BunnyHead;
 import com.packtpub.libgdx.canyonbunny.game.objects.BunnyHead.JUMP_STATE;
 import com.packtpub.libgdx.canyonbunny.game.objects.Feather;
 import com.packtpub.libgdx.canyonbunny.game.objects.GoldCoin;
 import com.packtpub.libgdx.canyonbunny.game.objects.Rock;
-import com.badlogic.gdx.Game;
 import com.packtpub.libgdx.canyonbunny.screens.MenuScreen;
+import com.packtpub.libgdx.canyonbunny.util.CameraHelper;
+import com.packtpub.libgdx.canyonbunny.util.Constants;
 
 public class WorldController extends InputAdapter {
+
 	private static final String TAG = WorldController.class.getName();
 
-	public CameraHelper cameraHelper;
+	private Game game;
 	public Level level;
 	public int lives;
+	public float livesVisual;
 	public int score;
+	public float scoreVisual;
+
+	public CameraHelper cameraHelper;
 
 	// Rectangles for collision detection
 	private Rectangle r1 = new Rectangle();
@@ -38,11 +50,51 @@ public class WorldController extends InputAdapter {
 
 	private float timeLeftGameOverDelay;
 
-	private Game game;
+	public WorldController(Game game) {
+		this.game = game;
+		init();
+	}
 
-	private void backToMenu() {
-		// switch to menu screen
-		game.setScreen(new MenuScreen(game));
+	private void init() {
+		Gdx.input.setInputProcessor(this);
+		cameraHelper = new CameraHelper();
+		lives = Constants.LIVES_START;
+		livesVisual = lives;
+		timeLeftGameOverDelay = 0;
+		initLevel();
+	}
+
+	private void initLevel() {
+		score = 0;
+		scoreVisual = score;
+		level = new Level(Constants.LEVEL_01);
+		cameraHelper.setTarget(level.bunnyHead);
+	}
+
+	public void update(float deltaTime) {
+		handleDebugInput(deltaTime);
+		if (isGameOver()) {
+			timeLeftGameOverDelay -= deltaTime;
+			if (timeLeftGameOverDelay < 0)
+				backToMenu();
+		} else {
+			handleInputGame(deltaTime);
+		}
+		level.update(deltaTime);
+		testCollisions();
+		cameraHelper.update(deltaTime);
+		if (!isGameOver() && isPlayerInWater()) {
+			lives--;
+			if (isGameOver())
+				timeLeftGameOverDelay = Constants.TIME_DELAY_GAME_OVER;
+			else
+				initLevel();
+		}
+		level.mountains.updateScrollPosition(cameraHelper.getPosition());
+		if (livesVisual > lives)
+			livesVisual = Math.max(lives, livesVisual - 1 * deltaTime);
+		if (scoreVisual < score)
+			scoreVisual = Math.min(score, scoreVisual + 250 * deltaTime);
 	}
 
 	public boolean isGameOver() {
@@ -51,6 +103,46 @@ public class WorldController extends InputAdapter {
 
 	public boolean isPlayerInWater() {
 		return level.bunnyHead.position.y < -5;
+	}
+
+	private void testCollisions() {
+		r1.set(level.bunnyHead.position.x, level.bunnyHead.position.y,
+				level.bunnyHead.bounds.width, level.bunnyHead.bounds.height);
+
+		// Test collision: Bunny Head <-> Rocks
+		for (Rock rock : level.rocks) {
+			r2.set(rock.position.x, rock.position.y, rock.bounds.width,
+					rock.bounds.height);
+			if (!r1.overlaps(r2))
+				continue;
+			onCollisionBunnyHeadWithRock(rock);
+			// IMPORTANT: must do all collisions for valid edge testing on
+			// rocks.
+		}
+
+		// Test collision: Bunny Head <-> Gold Coins
+		for (GoldCoin goldcoin : level.goldcoins) {
+			if (goldcoin.collected)
+				continue;
+			r2.set(goldcoin.position.x, goldcoin.position.y,
+					goldcoin.bounds.width, goldcoin.bounds.height);
+			if (!r1.overlaps(r2))
+				continue;
+			onCollisionBunnyWithGoldCoin(goldcoin);
+			break;
+		}
+
+		// Test collision: Bunny Head <-> Feathers
+		for (Feather feather : level.feathers) {
+			if (feather.collected)
+				continue;
+			r2.set(feather.position.x, feather.position.y,
+					feather.bounds.width, feather.bounds.height);
+			if (!r1.overlaps(r2))
+				continue;
+			onCollisionBunnyWithFeather(feather);
+			break;
+		}
 	}
 
 	private void onCollisionBunnyHeadWithRock(Rock rock) {
@@ -66,6 +158,7 @@ public class WorldController extends InputAdapter {
 			}
 			return;
 		}
+
 		switch (bunnyHead.jumpState) {
 		case GROUNDED:
 			break;
@@ -95,63 +188,10 @@ public class WorldController extends InputAdapter {
 		Gdx.app.log(TAG, "Feather collected");
 	}
 
-	private void testCollisions() {
-		r1.set(level.bunnyHead.position.x, level.bunnyHead.position.y,
-				level.bunnyHead.bounds.width, level.bunnyHead.bounds.height);
-		// Test collision: Bunny Head <-> Rocks
-		for (Rock rock : level.rocks) {
-			r2.set(rock.position.x, rock.position.y, rock.bounds.width,
-					rock.bounds.height);
-			if (!r1.overlaps(r2))
-				continue;
-			onCollisionBunnyHeadWithRock(rock);
-			// IMPORTANT: must do all collisions for valid
-			// edge testing on rocks.
-		}
-		// Test collision: Bunny Head <-> Gold Coins
-		for (GoldCoin goldcoin : level.goldcoins) {
-			if (goldcoin.collected)
-				continue;
-			r2.set(goldcoin.position.x, goldcoin.position.y,
-					goldcoin.bounds.width, goldcoin.bounds.height);
-			if (!r1.overlaps(r2))
-				continue;
-			onCollisionBunnyWithGoldCoin(goldcoin);
-			break;
-		}
-		// Test collision: Bunny Head <-> Feathers
-		for (Feather feather : level.feathers) {
-			if (feather.collected)
-				continue;
-			r2.set(feather.position.x, feather.position.y,
-					feather.bounds.width, feather.bounds.height);
-			if (!r1.overlaps(r2))
-				continue;
-			onCollisionBunnyWithFeather(feather);
-			break;
-		}
-	}
-
-	private void initLevel() {
-		score = 0;
-		level = new Level(Constants.LEVEL_01);
-		cameraHelper.setTarget(level.bunnyHead);
-	}
-
-	public WorldController(Game game) {
-		this.game = game;
-		init();
-	}
-
-	public WorldController() {
-		cameraHelper = new CameraHelper();
-		Gdx.input.setInputProcessor(this);
-		init();
-	}
-
 	private void handleDebugInput(float deltaTime) {
 		if (Gdx.app.getType() != ApplicationType.Desktop)
 			return;
+
 		if (!cameraHelper.hasTarget(level.bunnyHead)) {
 			// Camera Controls (move)
 			float camMoveSpeed = 5 * deltaTime;
@@ -169,6 +209,7 @@ public class WorldController extends InputAdapter {
 			if (Gdx.input.isKeyPressed(Keys.BACKSPACE))
 				cameraHelper.setPosition(0, 0);
 		}
+
 		// Camera Controls (zoom)
 		float camZoomSpeed = 1 * deltaTime;
 		float camZoomSpeedAccelerationFactor = 5;
@@ -180,6 +221,28 @@ public class WorldController extends InputAdapter {
 			cameraHelper.addZoom(-camZoomSpeed);
 		if (Gdx.input.isKeyPressed(Keys.SLASH))
 			cameraHelper.setZoom(1);
+	}
+
+	private void handleInputGame(float deltaTime) {
+		if (cameraHelper.hasTarget(level.bunnyHead)) {
+			// Player Movement
+			if (Gdx.input.isKeyPressed(Keys.LEFT)) {
+				level.bunnyHead.velocity.x = -level.bunnyHead.terminalVelocity.x;
+			} else if (Gdx.input.isKeyPressed(Keys.RIGHT)) {
+				level.bunnyHead.velocity.x = level.bunnyHead.terminalVelocity.x;
+			} else {
+				// Execute auto-forward movement on non-desktop platform
+				if (Gdx.app.getType() != ApplicationType.Desktop) {
+					level.bunnyHead.velocity.x = level.bunnyHead.terminalVelocity.x;
+				}
+			}
+
+			// Bunny Jump
+			if (Gdx.input.isTouched() || Gdx.input.isKeyPressed(Keys.SPACE))
+				level.bunnyHead.setJumping(true);
+			else
+				level.bunnyHead.setJumping(false);
+		}
 	}
 
 	private void moveCamera(float x, float y) {
@@ -209,73 +272,9 @@ public class WorldController extends InputAdapter {
 		return false;
 	}
 
-	private void init() {
-		Gdx.input.setInputProcessor(this);
-		cameraHelper = new CameraHelper();
-		lives = Constants.LIVES_START;
-		timeLeftGameOverDelay = 0;
-		initLevel();
-	}
-
-	private Pixmap createProceduralPixmap(int width, int height) {
-		Pixmap pixmap = new Pixmap(width, height, Format.RGBA8888);
-		// Fill square with red color at 50% opacity
-		pixmap.setColor(1, 0, 0, 0.5f);
-		pixmap.fill();
-		// Draw a yellow-colored X shape on square
-		pixmap.setColor(1, 1, 0, 1);
-
-		pixmap.drawLine(0, 0, width, height);
-		pixmap.drawLine(width, 0, 0, height);
-		// Draw a cyan-colored border around square
-		pixmap.setColor(0, 1, 1, 1);
-		pixmap.drawRectangle(0, 0, width, height);
-		return pixmap;
-	}
-
-	public void update(float deltaTime) {
-		handleDebugInput(deltaTime);
-		if (isGameOver()) {
-			timeLeftGameOverDelay -= deltaTime;
-			if (timeLeftGameOverDelay < 0)
-				backToMenu();
-
-		} else {
-			handleInputGame(deltaTime);
-		}
-		level.update(deltaTime);
-		testCollisions();
-		cameraHelper.update(deltaTime);
-		if (!isGameOver() && isPlayerInWater()) {
-			lives--;
-			if (isGameOver())
-				timeLeftGameOverDelay = Constants.TIME_DELAY_GAME_OVER;
-			else
-				initLevel();
-		}
-
-	}
-
-	private void handleInputGame(float deltaTime) {
-		if (cameraHelper.hasTarget(level.bunnyHead)) {
-			// Player Movement
-			if (Gdx.input.isKeyPressed(Keys.LEFT)) {
-				level.bunnyHead.velocity.x = -level.bunnyHead.terminalVelocity.x;
-			} else if (Gdx.input.isKeyPressed(Keys.RIGHT)) {
-				level.bunnyHead.velocity.x = level.bunnyHead.terminalVelocity.x;
-			} else {
-				// Execute auto-forward movement on non-desktop platform
-				if (Gdx.app.getType() != ApplicationType.Desktop) {
-					level.bunnyHead.velocity.x = level.bunnyHead.terminalVelocity.x;
-				}
-			}
-			// Bunny Jump
-			if (Gdx.input.isTouched() || Gdx.input.isKeyPressed(Keys.SPACE)) {
-				level.bunnyHead.setJumping(true);
-			} else {
-				level.bunnyHead.setJumping(false);
-			}
-		}
+	private void backToMenu() {
+		// switch to menu screen
+		game.setScreen(new MenuScreen(game));
 	}
 
 }
